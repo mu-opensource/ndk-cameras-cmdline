@@ -14,7 +14,7 @@ To run the binary, you will need to obtain the camera permission for termux by
 
 Once you grant the termux app with camera permission, you can run the binary from the temux commandline.
 
-The current output looks like this:
+The current output looks like this (Running on a XiaoMi MI8 with Android P):
 ```
 :/data/ndk-cameras-cmdline # ./build.sh 
 :/data/ndk-cameras-cmdline # ./ndk-camera
@@ -30,3 +30,5 @@ D src/main.cc:74 session 0x7cd60a2b40 is active
 D src/main.cc:297 No Image found...
 D src/main.cc:297 No Image found...
 ```
+
+From top, I could see that the camera service is running at 25% of one core, which suggest something is running. A normal ndk sample camera app will run at about 100% of one core to display image to the ANativeWindow.
