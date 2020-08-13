@@ -15,7 +15,7 @@ To run the binary, you will need to obtain the camera permission for termux by
 Once you grant the termux app with camera permission, you can run the binary from the temux commandline.
 
 The current output looks like this:
-
+```
 :/data/ndk-cameras-cmdline # ./build.sh 
 :/data/ndk-cameras-cmdline # ./ndk-camera
 D src/main.cc:163 Found camera ID 0
@@ -29,3 +29,4 @@ D src/main.cc:297 No Image found...
 D src/main.cc:74 session 0x7cd60a2b40 is active
 D src/main.cc:297 No Image found...
 D src/main.cc:297 No Image found...
+```
