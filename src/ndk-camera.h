@@ -9,7 +9,8 @@
   if (!(cond)) {                                              \
     __android_log_assert(#cond, LOG_TAG, fmt, ##__VA_ARGS__); \
   }
-#define PRINTD(...) printf("D %s:%d ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n");
+#define PRINTD(...) printf("D %s:%d ", __FILE__, __LINE__); \
+	printf(__VA_ARGS__); printf("\n");
 
 /*
  * A set of macros to call into Camera APIs. The API is grouped with a few
@@ -32,7 +33,6 @@
 
 #define UKNOWN_TAG "UNKNOW_TAG"
 #define MAKE_PAIR(val) std::make_pair(val, #val)
-
 template <typename T>
 const char* GetPairStr(T key, std::vector<std::pair<T, const char*>>& store) {
   typedef typename std::vector<std::pair<T, const char*>>::iterator iterator;
@@ -44,6 +44,7 @@ const char* GetPairStr(T key, std::vector<std::pair<T, const char*>>& store) {
   LOGW("(%#08x) : UNKNOWN_TAG for %s", key, typeid(store[0].first).name());
   return UKNOWN_TAG;
 }
+
 /*
  * camera_status_t error translation
  */
@@ -66,31 +67,15 @@ static std::vector<ERROR_PAIR> errorInfo{
     MAKE_PAIR(ACAMERA_ERROR_PERMISSION_DENIED),
 };
 
-struct ImageFormat {
-  int32_t width;
-  int32_t height;
-  enum AIMAGE_FORMATS format;  // Through out this demo, the format is fixed to
-                   // YUV_420 format
-};
+const char* GetErrorStr(camera_status_t err) {
+  return GetPairStr<camera_status_t>(err, errorInfo);
+}
 
 /**
  * MAX_BUF_COUNT:
  *   Max buffers in this ImageReader.
  */
 #define MAX_BUF_COUNT 4
-
-class ImageReader {
-public:
-  explicit ImageReader(ImageFormat* format);
-  virtual ~ImageReader();
-
-  ANativeWindow* GetNativeWindow(void);
-  AImage* GetNextImage(void);
-  void DeleteImage(AImage* image);
-  
- private:
-  AImageReader* reader_;
-};
 
 enum class CaptureSessionState : int32_t {
   READY = 0,  // session is ready
@@ -114,14 +99,29 @@ struct CaptureRequestInfo {
   int sessionSequenceId_;
 };
 
+struct SurfaceBundle {
+  android::sp<android::SurfaceComposerClient> session;
+  android::sp<android::IBinder> dtoken;
+  android::DisplayInfo dinfo;
+  android::sp<android::SurfaceControl> surfaceControl;
+  android::sp<android::Surface> surface;
+
+  android::sp<android::GraphicBuffer> outBuffer;
+  android::sp<android::Fence> outFence;
+
+  float outTransformMatrix[16];
+};
+
 class NDKCamera {
  public:
   NDKCamera();
   virtual ~NDKCamera();
   
+  // Basic apis to operate a camera
   void Init(bool rear);
-  void CreateSession(ANativeWindow* previewWindow, ANativeWindow* jpgWindow);
+  void CreateSession(int capture_width, int capture_height);
   void StartPreview(bool start);
+  android::GraphicBuffer* GetLatestFrame();
   
   // Listeners
   ACameraManager_AvailabilityCallbacks* GetManagerListener();
@@ -135,6 +135,8 @@ class NDKCamera {
 
  private:
   void EnumerateCamera(bool rear);
+  void CreateSession(ANativeWindow* previewWindow);
+  void CreateSession(ANativeWindow* previewWindow, ANativeWindow* jpgWindow);
 
   ACameraManager* cameraMgr_;
   std::string activeCameraId_;
@@ -144,6 +146,8 @@ class NDKCamera {
   ACameraCaptureSession* captureSession_;
   CaptureSessionState captureSessionState_;
   ACameraDevice* pDevice_;
+
+  SurfaceBundle surfaceBundle_;
 };
 
 #endif  // NDK_CAMERA_H_

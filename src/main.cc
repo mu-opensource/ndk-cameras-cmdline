@@ -11,50 +11,12 @@
 #include <unistd.h>
 #include <vector>
 
+#include <ui/DisplayInfo.h>
+#include <gui/ISurfaceComposer.h>
+#include <gui/Surface.h>
+#include <gui/SurfaceComposerClient.h>
+
 #include "ndk-camera.h"
-
-const char* GetErrorStr(camera_status_t err) {
-  return GetPairStr<camera_status_t>(err, errorInfo);
-}
-
-ImageReader::ImageReader(ImageFormat *res)
-    : reader_(nullptr) {
-  media_status_t status = AImageReader_new(res->width, res->height, res->format,
-                                           MAX_BUF_COUNT, &reader_);
-  ASSERT(reader_ && status == AMEDIA_OK, "Failed to create AImageReader");
-  /*
-  AImageReader_ImageListener listener{
-      .context = this, .onImageAvailable = OnImageCallback,
-  };
-  AImageReader_setImageListener(reader_, &listener);
-   */
-}
-
-ImageReader::~ImageReader() {
-  ASSERT(reader_, "NULL Pointer to %s", __FUNCTION__);
-  AImageReader_delete(reader_);
-}
-
-ANativeWindow *ImageReader::GetNativeWindow(void) {
-  if (!reader_) return nullptr;
-  ANativeWindow *nativeWindow;
-  media_status_t status = AImageReader_getWindow(reader_, &nativeWindow);
-  ASSERT(status == AMEDIA_OK, "Could not get ANativeWindow");
-  return nativeWindow;
-}
-
-void ImageReader::DeleteImage(AImage *image) {
-  if (image) AImage_delete(image);
-}
-
-AImage *ImageReader::GetNextImage(void) {
-  AImage *image;
-  media_status_t status = AImageReader_acquireNextImage(reader_, &image);
-  if (status != AMEDIA_OK) {
-    return nullptr;
-  }
-  return image;
-}
 
 void NDKCamera::OnSessionState(ACameraCaptureSession* ses,
                                CaptureSessionState state) {
@@ -149,7 +111,9 @@ ACameraManager_AvailabilityCallbacks* NDKCamera::GetManagerListener() {
 NDKCamera::NDKCamera()
 : cameraMgr_(nullptr),
   outputContainer_(nullptr),
-  captureSessionState_(CaptureSessionState::MAX_STATE){}
+  captureSession_(nullptr),
+  captureSessionState_(CaptureSessionState::MAX_STATE),
+  pDevice_(nullptr){}
 
 void NDKCamera::Init(bool rear) {
   requests_.resize(CAPTURE_REQUEST_COUNT);
@@ -249,6 +213,71 @@ void NDKCamera::StartPreview(bool start) {
   }
 }
 
+void NDKCamera::CreateSession(int capture_width, int capture_height) {
+  surfaceBundle_.session = new android::SurfaceComposerClient();
+  ASSERT(surfaceBundle_.session, "failed to create surface composer client");
+  surfaceBundle_.dtoken = android::SurfaceComposerClient::getBuiltInDisplay(
+                android::ISurfaceComposer::eDisplayIdMain);
+  ASSERT(surfaceBundle_.dtoken, "Failed to get built in display");
+
+  android::status_t status = android::SurfaceComposerClient::getDisplayInfo(
+      surfaceBundle_.dtoken, &surfaceBundle_.dinfo);
+  ASSERT(status == 0, "status not zero");
+  PRINTD("Dinfo %dx%d", surfaceBundle_.dinfo.w, surfaceBundle_.dinfo.h);
+  surfaceBundle_.surfaceControl = surfaceBundle_.session->createSurface(
+      android::String8("preview"), capture_width, capture_height,
+      android::PIXEL_FORMAT_RGBX_8888, 0);
+  ASSERT(surfaceBundle_.surfaceControl, "Failed to create surface control!");
+
+  surfaceBundle_.surface = surfaceBundle_.surfaceControl->getSurface();
+  ASSERT(surfaceBundle_.surface, "Failed to get surface!");
+  PRINTD("Surface created!");
+
+  CreateSession(surfaceBundle_.surface.get());
+}
+
+android::GraphicBuffer* NDKCamera::GetLatestFrame() {
+  surfaceBundle_.outBuffer = nullptr;
+
+  android::status_t status = surfaceBundle_.surface->getLastQueuedBuffer(
+      &surfaceBundle_.outBuffer, &surfaceBundle_.outFence,
+      surfaceBundle_.outTransformMatrix);
+
+  PRINTD("getLastQueuedBuffer status %d", status);
+  if (surfaceBundle_.outBuffer) {
+    PRINTD("GraphicBuffer w=%d, h=%d, fmt=%d",
+	   surfaceBundle_.outBuffer->getWidth(),
+	   surfaceBundle_.outBuffer->getHeight(),
+	   surfaceBundle_.outBuffer->getPixelFormat());
+    return surfaceBundle_.outBuffer.get();
+  } else {
+    return nullptr;
+  }
+}
+
+void NDKCamera::CreateSession(ANativeWindow* previewWindow) {
+  // Create output from this app's ANativeWindow, and add into output container
+  requests_[PREVIEW_REQUEST_IDX].outputNativeWindow_ = previewWindow;
+  requests_[PREVIEW_REQUEST_IDX].template_ = TEMPLATE_PREVIEW;
+
+  CALL_CONTAINER(create(&outputContainer_));
+  auto& req = requests_[PREVIEW_REQUEST_IDX];
+  {
+    ANativeWindow_acquire(req.outputNativeWindow_);
+    CALL_OUTPUT(create(req.outputNativeWindow_, &req.sessionOutput_));
+    CALL_CONTAINER(add(outputContainer_, req.sessionOutput_));
+    CALL_TARGET(create(req.outputNativeWindow_, &req.target_));
+    CALL_DEV(createCaptureRequest(pDevice_, req.template_, &req.request_));
+    CALL_REQUEST(addTarget(req.request_, req.target_));
+  }
+
+  // Create a capture session for the given preview request
+  captureSessionState_ = CaptureSessionState::READY;
+  CALL_DEV(createCaptureSession(pDevice_,
+                                outputContainer_, GetSessionListener(),
+                                &captureSession_));
+}
+
 void NDKCamera::CreateSession(ANativeWindow* previewWindow,
                               ANativeWindow* jpgWindow) {
   // Create output from this app's ANativeWindow, and add into output container
@@ -275,29 +304,20 @@ void NDKCamera::CreateSession(ANativeWindow* previewWindow,
 }
 
 int main(int argc, char** argv) {
-  bool rear_camera = true;
+  bool rear_camera = false;
 
   // Create camera
   NDKCamera ndk_camera;
   ndk_camera.Init(rear_camera);
-  
-  ImageFormat view{640, 480, AIMAGE_FORMAT_YUV_420_888};
-  ImageFormat capture{640, 480, AIMAGE_FORMAT_JPEG};
-  ImageReader yuvReader_(&view), jpgReader_(&capture);
-
-  // now we could create session
-  ndk_camera.CreateSession(yuvReader_.GetNativeWindow(),
-                           jpgReader_.GetNativeWindow());
-  
+  ndk_camera.CreateSession(1280, 720);
   ndk_camera.StartPreview(true);
-  // Loop to extract camera image.
+
   while (true) {
-    AImage* image = yuvReader_.GetNextImage();
-    if (!image) {
+    android::GraphicBuffer* graphic_buffer = ndk_camera.GetLatestFrame();
+    if (!graphic_buffer) {
       PRINTD("No Image found...");
       sleep(1);
     }
-    yuvReader_.DeleteImage(image);
   }
   
   return 0;
