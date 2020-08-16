@@ -1,11 +1,11 @@
 # ndk-cameras-cmdline
 Command line tools to operate Android cameras, using the NDK cameras API and termux (Android commandline window app).
 
-This is some code extracted from NDK-samples/camera (https://github.com/android/ndk-samples/tree/master/camera) to be compiled into a stand-alone program using the clang compiler under termux.
+This is some code extracted from NDK-samples/camera (https://github.com/android/ndk-samples/tree/master/camera) to be compiled into a stand-alone program using the clang compiler under termux (termux.com).
 
 Run the "build.sh" script to compile the code into binary.
 
-Even though the original NDK camera example works fine with getting captured images from the android camera api, this code will run with no errors but no image is every available.
+Even though the original NDK camera example works fine with getting captured images from the android camera api, this code will run with no errors but no image is ever available.
 
 To run the binary, you will need to obtain the camera permission for termux by 
 1. installing termux:API app (https://wiki.termux.com/wiki/Termux:API)
