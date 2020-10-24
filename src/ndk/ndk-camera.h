@@ -1,6 +1,20 @@
 #ifndef NDK_CAMERA_H_
 #define NDK_CAMERA_H_
 
+#include <android/log.h>
+#include <android/native_window.h>
+#include <camera/NdkCameraManager.h>
+#include <media/NdkImage.h>
+#include <media/NdkImageReader.h>
+#include <string>
+#include <unistd.h>
+#include <vector>
+
+#include <ui/DisplayInfo.h>
+#include <gui/ISurfaceComposer.h>
+#include <gui/Surface.h>
+#include <gui/SurfaceComposerClient.h>
+
 #define LOG_TAG "NDK-CAMERA"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
@@ -67,9 +81,7 @@ static std::vector<ERROR_PAIR> errorInfo{
     MAKE_PAIR(ACAMERA_ERROR_PERMISSION_DENIED),
 };
 
-const char* GetErrorStr(camera_status_t err) {
-  return GetPairStr<camera_status_t>(err, errorInfo);
-}
+const char* GetErrorStr(camera_status_t err);
 
 /**
  * MAX_BUF_COUNT:
